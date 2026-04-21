@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SW-mk.1 — Formula Student Steering Wheel</title>
+  <meta name="description" content="SW-mk.1 — Prototyp závodního volantu pro Formula Student KBR-26.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:        #0a0a0a;
+      --surface:   #141414;
+      --accent:    #e10600;
+      --text:      #ffffff;
+      --muted:     #8a8a8a;
+      --border:    #1f1f1f;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: auto; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      height: 600vh;
+      overflow-x: hidden;
+      touch-action: pan-y;
+    }
+
+    /* ─── Loading ─────────────────────────── */
+    #loading {
+      position: fixed; inset: 0; z-index: 100;
+      background: #000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+      transition: opacity 0.8s ease;
+    }
+    #loading-logo { font-family: var(--font-mono); font-size: 22px; letter-spacing: 0.3em; color: var(--text); margin-bottom: 8px; }
+    #loading-bar-track { width: 280px; height: 1px; background: var(--border); }
+    #loading-bar-fill  { height: 100%; width: 0%; background: var(--accent); transition: width 0.15s linear; }
+    #loading-text { font-family: var(--font-mono); font-size: 11px; color: var(--muted); letter-spacing: 0.25em; }
+
+    /* ─── Canvas ──────────────────────────── */
+    #canvas-container { position: fixed; inset: 0; z-index: 0; }
+    #canvas-container canvas { display: block; width: 100% !important; height: 100% !important; }
+
+    /* ─── Grid overlay ────────────────────── */
+    #grid-overlay {
+      position: fixed; inset: 0; z-index: 1; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* ─── Progress bar ────────────────────── */
+    #progress-track {
+      position: fixed; left: 20px; top: 50%; transform: translateY(-50%);
+      width: 2px; height: 60vh; background: var(--border); z-index: 5;
+    }
+    #progress-fill { position: absolute; top: 0; left: 0; width: 100%; height: 0%; background: var(--accent); }
+    #progress-label {
+      position: absolute; bottom: -22px; left: 50%; transform: translateX(-50%);
+      font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.15em; color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* ─── Nav ─────────────────────────────── */
+    #nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 28px 6vw;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.4s ease;
+    }
+    #nav.scrolled { border-bottom-color: var(--border); }
+    #nav-logo { font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.2em; color: var(--text); }
+    #nav-right { display: flex; align-items: center; gap: 20px; }
+    #nav-section { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.15em; color: var(--muted); }
+    #nav-dot { width: 6px; height: 6px; background: var(--accent); }
+
+    /* ─── Content overlay ─────────────────── */
+    #content { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+
+    .section {
+      position: absolute; inset: 0;
+      display: flex; align-items: center;
+      padding: 88px 6vw 48px;
+      opacity: 0;
+      will-change: transform, opacity;
+      pointer-events: none;
+    }
+    .section.visible { pointer-events: auto; }
+
+    /* ─── Two-column sections ─────────────── */
+    #s01 { align-items: flex-end; padding-bottom: 16vh; }
+    #s02, #s03 { gap: 4vw; }
+    .sec-content { flex-shrink: 0; }
+    #s01 .sec-content { max-width: 480px; }
+    #s02 .sec-content { flex: 0 0 42%; max-width: 42%; }
+    #s03 .sec-content { flex: 0 0 44%; max-width: 44%; }
+    #s04 .sec-content { max-width: 100%; width: 100%; }
+    .sec-visual { flex: 1; display: flex; align-items: center; justify-content: center; }
+    .sec-visual svg { width: 100%; height: auto; max-height: 68vh; }
+
+    /* ─── Corner labels ───────────────────── */
+    .corner-tl, .corner-br {
+      position: absolute;
+      font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em; color: #333;
+      pointer-events: none;
+    }
+    .corner-tl { top: 64px; left: 6vw; }
+    .corner-br { bottom: 20px; right: 6vw; text-align: right; }
+
+    /* ─── Section separator ───────────────── */
+    .sec-sep {
+      position: absolute; top: 76px; left: 6vw;
+      display: flex; align-items: center; gap: 0;
+      width: calc(100% - 12vw);
+      opacity: 0.35; pointer-events: none;
+    }
+    .sep-cross {
+      width: 9px; height: 9px; position: relative; flex-shrink: 0;
+    }
+    .sep-cross::before, .sep-cross::after {
+      content: ''; position: absolute; background: var(--accent);
+    }
+    .sep-cross::before { width: 9px; height: 1px; top: 4px; left: 0; }
+    .sep-cross::after  { width: 1px; height: 9px; left: 4px; top: 0; }
+    .sep-line { flex: 1; height: 1px; background: var(--accent); margin: 0 4px; }
+
+    /* ─── Section labels ──────────────────── */
+    .sec-label {
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.25em;
+      color: var(--accent); display: flex; align-items: center; gap: 14px;
+      margin-bottom: 22px; text-transform: uppercase;
+    }
+    .sec-label::after { content: ''; display: block; width: 36px; height: 1px; background: var(--accent); }
+
+    /* ─── Typography ──────────────────────── */
+    .hero-title {
+      font-size: clamp(56px, 8vw, 96px); font-weight: 700;
+      letter-spacing: -0.03em; line-height: 0.95;
+      margin-bottom: 22px;
+    }
+    .hero-sub {
+      font-size: clamp(13px, 1.4vw, 15px); color: var(--muted);
+      letter-spacing: 0.02em; margin-bottom: 20px; max-width: 400px;
+    }
+    .hero-tag {
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.3em;
+      color: var(--accent); border: 1px solid var(--accent);
+      display: inline-block; padding: 5px 10px;
+    }
+    h2.sec-heading {
+      font-size: clamp(22px, 2.8vw, 38px); font-weight: 600;
+      letter-spacing: -0.02em; color: var(--text);
+      margin-bottom: 16px;
+    }
+    .body-text {
+      font-size: 13px; line-height: 1.78; color: var(--muted);
+      margin-bottom: 24px;
+    }
+
+    /* ─── Stagger entrance ────────────────── */
+    .section .sec-label,
+    .section h1.hero-title,
+    .section h2.sec-heading,
+    .section .hero-sub,
+    .section .hero-tag,
+    .section .body-text,
+    .section .stats-grid,
+    .section .materials-grid,
+    .section .functions-grid,
+    .section .sec-footer,
+    .section .sec-visual {
+      opacity: 0;
+      transition: opacity 0.45s ease;
+    }
+    .section.entered .sec-label        { opacity: 1; transition-delay: 0.00s; }
+    .section.entered h1.hero-title     { opacity: 1; transition-delay: 0.06s; }
+    .section.entered h2.sec-heading    { opacity: 1; transition-delay: 0.06s; }
+    .section.entered .hero-sub         { opacity: 1; transition-delay: 0.12s; }
+    .section.entered .hero-tag         { opacity: 1; transition-delay: 0.18s; }
+    .section.entered .body-text        { opacity: 1; transition-delay: 0.14s; }
+    .section.entered .stats-grid,
+    .section.entered .materials-grid,
+    .section.entered .functions-grid   { opacity: 1; transition-delay: 0.22s; }
+    .section.entered .sec-footer       { opacity: 1; transition-delay: 0.32s; }
+    .section.entered .sec-visual       { opacity: 1; transition-delay: 0.18s; }
+
+    /* ─── Scroll indicator ────────────────── */
+    .scroll-indicator {
+      position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.3em; color: var(--muted);
+      animation: indicatorBounce 2.4s ease-in-out infinite;
+    }
+    @keyframes indicatorBounce {
+      0%,100% { transform: translateX(-50%) translateY(0); opacity: 0.5; }
+      50%      { transform: translateX(-50%) translateY(10px); opacity: 1; }
+    }
+    .scroll-arrow { width: 1px; height: 32px; background: linear-gradient(to bottom, transparent, var(--muted)); }
+
+    /* ─── Stats (S02) ─────────────────────── */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(4, auto);
+      gap: 1px; background: var(--border); border: 1px solid var(--border);
+      width: fit-content;
+    }
+    .stat-card { background: var(--surface); padding: 18px 22px; min-width: 100px; }
+    .stat-value { font-family: var(--font-mono); font-size: 22px; font-weight: 500; color: var(--text); letter-spacing: -0.02em; }
+    .stat-unit  { font-size: 12px; color: var(--muted); }
+    .stat-label { font-family: var(--font-mono); font-size: 9px; color: var(--muted); margin-top: 5px; text-transform: uppercase; letter-spacing: 0.15em; }
+
+    /* ─── Materials (S03) ─────────────────── */
+    .materials-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr);
+      gap: 1px; background: var(--border); border: 1px solid var(--border);
+    }
+    .material-card {
+      background: var(--surface); padding: 18px 16px;
+      border-left: 2px solid var(--accent);
+      transition: border-color 0.2s ease, border-left-width 0.2s ease;
+    }
+    .material-card:hover { border-color: var(--accent); border-left-width: 4px; }
+    .mat-id   { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.2em; color: var(--accent); margin-bottom: 8px; }
+    .mat-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+    .mat-role { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+    .mat-specs { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+    .mat-specs li { font-family: var(--font-mono); font-size: 9px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+    .mat-specs li::before { content: ''; width: 3px; height: 3px; background: var(--accent); flex-shrink: 0; }
+    .sec-footer { margin-top: 16px; }
+    .weight-row { display: flex; align-items: baseline; gap: 14px; margin-bottom: 8px; }
+    .weight-label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.25em; color: var(--muted); text-transform: uppercase; }
+    .weight-value { font-family: var(--font-mono); font-size: 26px; font-weight: 500; color: var(--text); letter-spacing: -0.02em; }
+    .iso-ref { font-family: var(--font-mono); font-size: 8px; color: #3a3a3a; letter-spacing: 0.12em; line-height: 1.5; }
+
+    /* ─── Functions (S04) ─────────────────── */
+    .s04-intro { font-size: 13px; line-height: 1.7; color: var(--muted); max-width: 560px; margin-bottom: 20px; }
+    .functions-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 1px; background: var(--border); border: 1px solid var(--border);
+    }
+    .func-card {
+      background: var(--surface); padding: 14px 14px;
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+    .func-card:hover { background: #1c1c1c; transform: scale(1.02); position: relative; z-index: 1; }
+    .func-card.primary {
+      background: var(--accent); grid-column: span 4;
+      padding: 18px 20px;
+      transition: filter 0.2s ease;
+    }
+    .func-card.primary:hover { filter: brightness(1.1); transform: none; }
+    .func-id { font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.2em; color: var(--muted); margin-bottom: 5px; }
+    .func-card.primary .func-id { color: rgba(255,255,255,0.5); }
+    .func-name { font-size: 11px; font-weight: 600; color: var(--text); }
+    .func-card.primary .func-name { font-size: 13px; margin-bottom: 6px; }
+    .func-desc { font-family: var(--font-mono); font-size: 8px; color: var(--muted); margin-top: 4px; line-height: 1.55; }
+    .func-card.primary .func-desc { font-size: 9px; color: rgba(255,255,255,0.65); max-width: 620px; }
+
+    /* ─── Mobile ──────────────────────────── */
+    @media (max-width: 768px) {
+      body { height: 700vh; }
+      .section { padding: 80px 5vw 40px; align-items: flex-start; flex-direction: column; }
+      #s01 { align-items: flex-end; padding-bottom: 12vh; }
+      #s02, #s03 { flex-direction: column; align-items: flex-start; }
+      #s02 .sec-content, #s03 .sec-content { flex: none; max-width: 100%; }
+      .sec-visual { width: 100%; margin-top: 24px; max-height: 220px; overflow: hidden; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); width: 100%; }
+      .stat-card { min-width: unset; }
+      .materials-grid { grid-template-columns: 1fr; }
+      .functions-grid { grid-template-columns: repeat(2, 1fr); }
+      .func-card.primary { grid-column: span 2; }
+      h2.sec-heading { font-size: clamp(20px, 5vw, 30px); }
+      #nav { padding: 20px 5vw; }
+      #progress-track { display: none; }
+    }
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      .functions-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div id="loading-logo">SW-mk.1</div>
+    <div id="loading-bar-track"><div id="loading-bar-fill"></div></div>
+    <div id="loading-text">LOADING / 00%</div>
+  </div>
+
+  <!-- Navigation -->
+  <nav id="nav">
+    <span id="nav-logo">SW-mk.1</span>
+    <div id="nav-right">
+      <span id="nav-section">01 / 04</span>
+      <div id="nav-dot"></div>
+    </div>
+  </nav>
+
+  <!-- Three.js canvas -->
+  <div id="canvas-container"></div>
+
+  <!-- Subtle grid overlay -->
+  <div id="grid-overlay"></div>
+
+  <!-- Vertical progress bar -->
+  <div id="progress-track">
+    <div id="progress-fill"></div>
+    <div id="progress-label">01/04</div>
+  </div>
+
+  <!-- Content overlay -->
+  <div id="content">
+
+    <!-- ── 01 LANDING ───────────────────────────────────────── -->
+    <section class="section" id="s01" data-start="0" data-end="0.21">
+      <div class="sec-content">
+        <div class="sec-label">01 / PROTOTYPE</div>
+        <h1 class="hero-title">SW-mk.1</h1>
+        <p class="hero-sub">Prototyp závodního volantu / Formula Student</p>
+        <span class="hero-tag">PROTOTYPE / 2026</span>
+      </div>
+      <div class="scroll-indicator">
+        <div class="scroll-arrow"></div>
+        SCROLL
+      </div>
+      <div class="corner-tl">COORD: X+01.00 / Y+0.00</div>
+      <div class="corner-br">SECTION 01/04 — ACTIVE</div>
+    </section>
+
+    <!-- ── 02 ERGONOMIE ─────────────────────────────────────── -->
+    <section class="section" id="s02" data-start="0.23" data-end="0.46">
+      <div class="sec-sep"><div class="sep-cross"></div><div class="sep-line"></div><div class="sep-cross"></div></div>
+      <div class="sec-content">
+        <div class="sec-label">02 / ERGONOMICS</div>
+        <h2 class="sec-heading">Ergonomie vycházející<br>z analýzy F1</h2>
+        <p class="body-text">
+          Při návrhu SW-mk.1 jsem vycházel z veřejně dostupných dat a fotografií
+          volantů z F1 sezóny 2020 až 2024. Analyzoval jsem konkrétně Mercedes W11,
+          Red Bull RB18 a Ferrari SF-24, měřil proporce z referenčních fotografií
+          a porovnával rozměry, úhly úchopů a rozmístění ovládacích prvků.
+        </p>
+        <p class="body-text" style="margin-top:-12px">
+          Vlastní tvar volantu vychází z butterfly geometrie s odsazenými úchopovými
+          zónami. Tento design umožňuje přirozenější polohu zápěstí při držení
+          a snižuje pronaci předloktí, která bývá u kruhových volantů hlavním zdrojem
+          únavy během dlouhých stintů.
+        </p>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value">310<span class="stat-unit"> mm</span></div>
+            <div class="stat-label">Vnější šířka</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">28<span class="stat-unit">°</span></div>
+            <div class="stat-label">Úhel úchop. zón</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">139<span class="stat-unit"> mm</span></div>
+            <div class="stat-label">Výška volantu</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">4.5<span class="stat-unit">"</span></div>
+            <div class="stat-label">Úhlopříčka disp.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SVG wireframe: butterfly wheel technical drawing -->
+      <div class="sec-visual">
+        <svg viewBox="0 0 540 285" xmlns="http://www.w3.org/2000/svg" aria-label="Technický nákres volantu SW-mk.1">
+          <defs>
+            <marker id="a1" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto">
+              <polygon points="0,0 5,2.5 0,5" fill="#e10600"/>
+            </marker>
+            <marker id="a2" markerWidth="5" markerHeight="5" refX="1" refY="2.5" orient="auto">
+              <polygon points="5,0 0,2.5 5,5" fill="#e10600"/>
+            </marker>
+          </defs>
+
+          <!-- Outer shell -->
+          <path d="M 150,24
+            C 188,13 228,9 264,9 C 300,9 340,13 378,24
+            L 462,46 C 486,57 502,76 507,100
+            C 512,122 506,146 492,160
+            C 478,173 460,179 440,181 L 370,186
+            C 354,188 342,197 332,211 L 326,221
+            C 320,228 312,232 302,232 L 226,232
+            C 216,232 208,228 202,221 L 196,211
+            C 186,197 174,188 158,186 L 88,181
+            C 68,179 50,173 36,160
+            C 22,146 16,122 21,100
+            C 26,76 42,57 66,46 Z"
+            fill="none" stroke="#e10600" stroke-width="1.5"/>
+
+          <!-- Top opening -->
+          <path d="M 178,24 C 214,12 314,12 350,24 L 342,68 C 308,57 220,57 186,68 Z"
+            fill="#0a0a0a" stroke="#2a2a2a" stroke-width="0.8"/>
+
+          <!-- Bottom opening -->
+          <path d="M 202,196 C 228,188 300,188 326,196 L 326,228 C 300,236 228,236 202,228 Z"
+            fill="#0a0a0a" stroke="#2a2a2a" stroke-width="0.8"/>
+
+          <!-- Display rectangle -->
+          <rect x="197" y="70" width="134" height="90" fill="#0d0d0d" stroke="#e10600" stroke-width="1"/>
+          <!-- Display inner label -->
+          <text x="264" y="119" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#e10600">DISPLAY 4.5"</text>
+          <text x="264" y="131" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#555">TFT / 480×272</text>
+
+          <!-- Left grip zone (dashed) -->
+          <path d="M 66,60 C 28,76 14,106 17,132 C 20,158 38,173 66,178 L 145,182 L 174,78 Z"
+            fill="none" stroke="#e10600" stroke-width="1" stroke-dasharray="4,3" opacity="0.45"/>
+          <text x="82" y="126" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#8a8a8a">GRIP</text>
+          <text x="82" y="138" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#8a8a8a">ZONE L</text>
+
+          <!-- Right grip zone (dashed) -->
+          <path d="M 462,60 C 500,76 514,106 511,132 C 508,158 490,173 462,178 L 383,182 L 354,78 Z"
+            fill="none" stroke="#e10600" stroke-width="1" stroke-dasharray="4,3" opacity="0.45"/>
+          <text x="446" y="126" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#8a8a8a">GRIP</text>
+          <text x="446" y="138" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#8a8a8a">ZONE R</text>
+
+          <!-- 28° angle indicator near right grip -->
+          <path d="M 368,78 L 388,78 A 20,20 0 0,0 375,61" fill="none" stroke="#e10600" stroke-width="0.8"/>
+          <text x="392" y="73" font-family="JetBrains Mono,monospace" font-size="9" fill="#e10600">28°</text>
+
+          <!-- PADDLE ZONE callout bottom -->
+          <line x1="264" y1="233" x2="264" y2="248" stroke="#555" stroke-width="0.7" stroke-dasharray="2,2"/>
+          <text x="264" y="258" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="#555">PADDLE ZONE</text>
+
+          <!-- 310mm horizontal dimension -->
+          <line x1="18" y1="271" x2="510" y2="271" stroke="#e10600" stroke-width="0.8" marker-start="url(#a2)" marker-end="url(#a1)"/>
+          <line x1="18" y1="265" x2="18" y2="269" stroke="#555" stroke-width="0.7"/>
+          <line x1="510" y1="265" x2="510" y2="269" stroke="#555" stroke-width="0.7"/>
+          <text x="264" y="282" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffffff">310 mm</text>
+
+          <!-- 139mm vertical dimension -->
+          <line x1="525" y1="9" x2="525" y2="232" stroke="#e10600" stroke-width="0.8" marker-start="url(#a2)" marker-end="url(#a1)"/>
+          <line x1="519" y1="9" x2="523" y2="9" stroke="#555" stroke-width="0.7"/>
+          <line x1="519" y1="232" x2="523" y2="232" stroke="#555" stroke-width="0.7"/>
+          <text x="0" y="0" transform="translate(536,120) rotate(90)" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="9" fill="#ffffff">139 mm</text>
+        </svg>
+      </div>
+      <div class="corner-tl">COORD: X+02.00 / Y+0.00</div>
+      <div class="corner-br">SECTION 02/04 — ACTIVE</div>
+    </section>
+
+    <!-- ── 03 MATERIÁLY ─────────────────────────────────────── -->
+    <section class="section" id="s03" data-start="0.49" data-end="0.72">
+      <div class="sec-sep"><div class="sep-cross"></div><div class="sep-line"></div><div class="sep-cross"></div></div>
+      <div class="sec-content">
+        <div class="sec-label">03 / MATERIALS</div>
+        <h2 class="sec-heading">Kompozitní konstrukce</h2>
+        <p class="body-text">
+          Volba materiálů vychází z požadavků na co nejnižší hmotnost při zachování
+          strukturální tuhosti. Konstrukce kombinuje čtyři materiály,
+          každý pro specifickou funkci.
+        </p>
+        <div class="materials-grid">
+          <div class="material-card">
+            <div class="mat-id">M01 / CARBON</div>
+            <div class="mat-name">Karbon T700</div>
+            <div class="mat-role">Hlavní nosná skořepina a lícová plocha</div>
+            <ul class="mat-specs">
+              <li>Uhlíkové vlákno, epoxidová matrice</li>
+              <li>4 vrstvy, twill 2/2 weave</li>
+              <li>Hustota 1.6 g/cm³</li>
+              <li>Pevnost v tahu 4 900 MPa</li>
+            </ul>
+          </div>
+          <div class="material-card">
+            <div class="mat-id">M02 / TITANIUM</div>
+            <div class="mat-name">Titan Grade 5</div>
+            <div class="mat-role">Paddle shifters a úchyty</div>
+            <ul class="mat-specs">
+              <li>Ti-6Al-4V, CNC frézováno</li>
+              <li>Povrch: anodizace černá</li>
+              <li>Hustota 4.43 g/cm³</li>
+              <li>Pevnost 950 MPa</li>
+            </ul>
+          </div>
+          <div class="material-card">
+            <div class="mat-id">M03 / ALUMINIUM</div>
+            <div class="mat-name">Hliník 7075-T6</div>
+            <div class="mat-role">Vnitřní konstrukční prvky a upevnění</div>
+            <ul class="mat-specs">
+              <li>AW-7075, frézované</li>
+              <li>Povrch: elox matně černý</li>
+              <li>Hustota 2.81 g/cm³</li>
+              <li>Pevnost 572 MPa</li>
+            </ul>
+          </div>
+          <div class="material-card">
+            <div class="mat-id">M04 / POLYMER</div>
+            <div class="mat-name">PA12 nehořlavý</div>
+            <div class="mat-role">3D tištěné kryty elektroniky</div>
+            <ul class="mat-specs">
+              <li>Polyamid 12, retardér hoření</li>
+              <li>Selective Laser Sintering (SLS)</li>
+              <li>Hustota 1.01 g/cm³</li>
+              <li>Teplotní odolnost do 170 °C</li>
+            </ul>
+          </div>
+        </div>
+        <div class="sec-footer">
+          <div class="weight-row">
+            <span class="weight-label">Celková hmotnost</span>
+            <span class="weight-value">740 g</span>
+          </div>
+          <div class="iso-ref">Data MPa a hustot ověřena z technických listů výrobců (Toray, ATI Specialty Alloys, Alcoa, EOS)</div>
+        </div>
+      </div>
+
+      <!-- SVG material zone diagram -->
+      <div class="sec-visual">
+        <svg viewBox="0 0 480 310" xmlns="http://www.w3.org/2000/svg" aria-label="Materiálové zóny volantu SW-mk.1">
+          <!-- M01 Carbon — main shell (red) -->
+          <path d="M 134,22
+            C 168,12 204,9 236,9 C 268,9 304,12 338,22
+            L 416,42 C 436,52 450,70 454,92
+            C 458,112 453,134 441,147
+            C 429,159 413,164 396,166 L 332,170
+            C 317,172 306,180 297,193 L 292,202
+            C 287,208 280,211 272,211 L 200,211
+            C 192,211 185,208 180,202 L 175,193
+            C 166,180 155,172 140,170 L 76,166
+            C 59,164 43,159 31,147
+            C 19,134 14,112 18,92
+            C 22,70 36,52 56,42 Z"
+            fill="rgba(225,6,0,0.07)" stroke="#e10600" stroke-width="1.2"/>
+
+          <!-- Top opening -->
+          <path d="M 160,22 C 192,12 280,12 312,22 L 305,62 C 273,52 199,52 167,62 Z"
+            fill="#0a0a0a" stroke="#222" stroke-width="0.7"/>
+          <!-- Bottom opening -->
+          <path d="M 181,178 C 204,171 268,171 291,178 L 291,207 C 268,214 204,214 181,207 Z"
+            fill="#0a0a0a" stroke="#222" stroke-width="0.7"/>
+
+          <!-- M04 Polymer — display bezel zone -->
+          <rect x="176" y="65" width="120" height="80" fill="rgba(102,102,102,0.15)" stroke="#666" stroke-width="1"/>
+
+          <!-- M02 Titanium — grip/paddle zones -->
+          <path d="M 55,56 C 25,70 13,98 15,122 C 17,145 33,157 57,160 L 125,164 L 152,70 Z"
+            fill="rgba(136,136,136,0.12)" stroke="#888" stroke-width="1"/>
+          <path d="M 417,56 C 447,70 459,98 457,122 C 455,145 439,157 415,160 L 347,164 L 320,70 Z"
+            fill="rgba(136,136,136,0.12)" stroke="#888" stroke-width="1"/>
+
+          <!-- M03 Aluminium — inner frame indicator -->
+          <path d="M 190,75 L 190,64 L 282,64 L 282,75" fill="none" stroke="#aaa" stroke-width="0.8" stroke-dasharray="3,2"/>
+          <path d="M 190,145 L 190,154 L 282,154 L 282,145" fill="none" stroke="#aaa" stroke-width="0.8" stroke-dasharray="3,2"/>
+
+          <!-- Labels with callout lines -->
+          <!-- M01 -->
+          <line x1="236" y1="30" x2="236" y2="10" stroke="#e10600" stroke-width="0.7"/>
+          <text x="238" y="9" font-family="JetBrains Mono,monospace" font-size="8" fill="#e10600">M01 CARBON</text>
+
+          <!-- M02 L -->
+          <line x1="70" y1="110" x2="40" y2="110" stroke="#888" stroke-width="0.7"/>
+          <text x="2" y="108" font-family="JetBrains Mono,monospace" font-size="7" fill="#888">M02</text>
+          <text x="2" y="118" font-family="JetBrains Mono,monospace" font-size="7" fill="#888">TI</text>
+
+          <!-- M02 R -->
+          <line x1="402" y1="110" x2="430" y2="110" stroke="#888" stroke-width="0.7"/>
+          <text x="433" y="108" font-family="JetBrains Mono,monospace" font-size="7" fill="#888">M02</text>
+          <text x="433" y="118" font-family="JetBrains Mono,monospace" font-size="7" fill="#888">TI</text>
+
+          <!-- M03 -->
+          <line x1="284" y1="64" x2="310" y2="50" stroke="#aaa" stroke-width="0.7"/>
+          <text x="312" y="48" font-family="JetBrains Mono,monospace" font-size="8" fill="#aaa">M03 AL</text>
+
+          <!-- M04 -->
+          <line x1="296" y1="105" x2="320" y2="105" stroke="#666" stroke-width="0.7"/>
+          <text x="323" y="108" font-family="JetBrains Mono,monospace" font-size="8" fill="#666">M04 PA12</text>
+
+          <!-- Legend -->
+          <rect x="0" y="230" width="480" height="80" fill="none"/>
+          <text x="0" y="244" font-family="JetBrains Mono,monospace" font-size="8" fill="#555" letter-spacing="0.15em">LEGENDA / MATERIÁLOVÉ ZÓNY</text>
+          <line x1="0" y1="249" x2="480" y2="249" stroke="#1f1f1f" stroke-width="0.5"/>
+
+          <!-- M01 legend -->
+          <rect x="0" y="256" width="10" height="10" fill="rgba(225,6,0,0.3)" stroke="#e10600" stroke-width="1"/>
+          <text x="15" y="265" font-family="JetBrains Mono,monospace" font-size="9" fill="#e10600">M01 — Karbon T700</text>
+          <!-- M02 legend -->
+          <rect x="140" y="256" width="10" height="10" fill="rgba(136,136,136,0.2)" stroke="#888" stroke-width="1"/>
+          <text x="155" y="265" font-family="JetBrains Mono,monospace" font-size="9" fill="#888">M02 — Titan Grade 5</text>
+          <!-- M03 legend -->
+          <rect x="0" y="273" width="10" height="10" fill="none" stroke="#aaa" stroke-width="1" stroke-dasharray="2,1"/>
+          <text x="15" y="282" font-family="JetBrains Mono,monospace" font-size="9" fill="#aaa">M03 — Hliník 7075-T6</text>
+          <!-- M04 legend -->
+          <rect x="140" y="273" width="10" height="10" fill="rgba(102,102,102,0.2)" stroke="#666" stroke-width="1"/>
+          <text x="155" y="282" font-family="JetBrains Mono,monospace" font-size="9" fill="#666">M04 — PA12 nehořlavý</text>
+        </svg>
+      </div>
+      <div class="corner-tl">COORD: X+03.00 / Y+0.00</div>
+      <div class="corner-br">SECTION 03/04 — ACTIVE</div>
+    </section>
+
+    <!-- ── 04 FUNKCE ────────────────────────────────────────── -->
+    <section class="section" id="s04" data-start="0.74" data-end="1.0">
+      <div class="sec-sep"><div class="sep-cross"></div><div class="sep-line"></div><div class="sep-cross"></div></div>
+      <div class="sec-content">
+        <div class="sec-label">04 / FUNCTIONS</div>
+        <h2 class="sec-heading">Integrované ovládací prvky</h2>
+        <p class="s04-intro">
+          Volant je navržen pro monopost Kolben Racing KBR-26, elektrický formulový vůz.
+          Bez převodovky a spojky, všechny ovládací prvky jsou optimalizované pro specifika
+          elektrického pohonu a rekuperace.
+        </p>
+        <div class="functions-grid">
+          <div class="func-card primary">
+            <div class="func-id">F01 / CENTRAL DISPLAY</div>
+            <div class="func-name">Central Display</div>
+            <div class="func-desc">Integrovaný TFT display 4.5" uprostřed volantu. Zobrazuje otáčky motoru, rychlost, stav baterie, teplotu pohonné jednotky, čas kola a split časy. Customizovatelné layouty dle preferencí pilota a fáze závodu.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F02</div>
+            <div class="func-name">Regen Paddles</div>
+            <div class="func-desc">Karbon-ti pádla. Levé zvyšuje rekuperaci, pravé snižuje. Zdvih 8 mm, Hall senzor.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F03</div>
+            <div class="func-name">Shift Light LED</div>
+            <div class="func-desc">RGB pásek v horní části. Úroveň rekuperace, aktivní režim pohonu, varování.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F04</div>
+            <div class="func-name">Neutral</div>
+            <div class="func-desc">Zelené tlačítko, přepnutí do neutrálu. Dvojitý stisk jako prevence náhody.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F05</div>
+            <div class="func-name">Launch Control</div>
+            <div class="func-desc">Žluté tlačítko, optimální start. Regime DRY / WET. Drží torque na ideální hodnotě.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F06</div>
+            <div class="func-name">Regen Mapping</div>
+            <div class="func-desc">Levý rotary encoder. 6 pozic: LOW / MED / HIGH / MAX / QUALI / CUSTOM.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F07</div>
+            <div class="func-name">Power Mapping</div>
+            <div class="func-desc">Pravý rotary encoder. ECO / RACE / QUALI / OVERTAKE. CAN bus → inverter.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F08</div>
+            <div class="func-name">Brake Bias</div>
+            <div class="func-desc">Multi-pos switch. Přední/zadní 54–62 %, krok 0.5 %.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F09</div>
+            <div class="func-name">Drive Mode</div>
+            <div class="func-desc">WET / DRY / RACE / QUALI. Mapování plynu, diferenciál, rekuperace.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F10</div>
+            <div class="func-name">Torque Vectoring</div>
+            <div class="func-desc">Rozložení momentu L/P zadní kolo. Stabilita při akceleraci v zatáčce.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F11</div>
+            <div class="func-name">Overtake Boost</div>
+            <div class="func-desc">Dočasné zvýšení výkonu na 10 s. Omezený počet použití na závod dle regulí.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F12</div>
+            <div class="func-name">Pit Limiter</div>
+            <div class="func-desc">Automatické omezení na 60 km/h. Aktivace stiskem, deaktivace plynem po opuštění.</div>
+          </div>
+          <div class="func-card">
+            <div class="func-id">F13</div>
+            <div class="func-name">Radio / Data Mark</div>
+            <div class="func-desc">Push-to-talk pro boxy. Dlouhý stisk = značka v telemetrických datech.</div>
+          </div>
+        </div>
+      </div>
+      <div class="corner-tl">COORD: X+04.00 / Y+0.00</div>
+      <div class="corner-br">SECTION 04/04 — ACTIVE</div>
+    </section>
+
+  </div><!-- #content -->
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OBJLoader }       from 'three/addons/loaders/OBJLoader.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+    /* ── Renderer ───────────────────────────────────────────── */
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    /* ── Scene ──────────────────────────────────────────────── */
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a0a);
+
+    /* ── Camera — fixed position, lookAt animated ───────────── */
+    const CAM_Z = 3.5;
+    const FOV   = 35;
+    const camera = new THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, 0.01, 200);
+    camera.position.set(0, 0, CAM_Z);
+    camera.lookAt(0, 0, 0);
+
+    /* ── Lights ─────────────────────────────────────────────── */
+    const keyLight = new THREE.DirectionalLight(0xfff8f0, 3.5);
+    keyLight.position.set(2.5, 3.0, 2.0);
+    scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0xe8f0ff, 0.9);
+    fillLight.position.set(-3.0, 1.0, 1.5);
+    scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0xff2010, 1.4);
+    rimLight.position.set(0, -1.0, -3.0);
+    scene.add(rimLight);
+
+    scene.add(new THREE.AmbientLight(0x404040, 2.0));
+
+    /* ── Environment (IBL) ──────────────────────────────────── */
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+
+    /* ── Carbon fiber normal map ────────────────────────────── */
+    function makeCarbonNormalMap(size = 512) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const imageData = ctx.createImageData(size, size);
+      const data = imageData.data;
+      const cell = 14;
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const cx = (x % cell) / cell, cy = (y % cell) / cell;
+          const shift = (Math.floor(y / cell) * 2) % 4;
+          const isWarp = ((Math.floor(x / cell) + shift) % 4) < 2;
+          let nx = 128, ny = 128, nz = 220;
+          if (isWarp) { const c = Math.sin(cx * Math.PI); ny = Math.round(128 + c * 55); nz = Math.round(220 - c * 25); }
+          else        { const c = Math.sin(cy * Math.PI); nx = Math.round(128 + c * 55); nz = Math.round(220 - c * 25); }
+          if (Math.min(cx, 1 - cx) < 0.07 || Math.min(cy, 1 - cy) < 0.07) {
+            nx = Math.round(nx * 0.85 + 128 * 0.15);
+            ny = Math.round(ny * 0.85 + 128 * 0.15);
+            nz = Math.round(nz * 0.92 + 255 * 0.08);
+          }
+          const i = (y * size + x) * 4;
+          data[i] = nx; data[i+1] = ny; data[i+2] = nz; data[i+3] = 255;
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(10, 10);
+      return tex;
+    }
+    const carbonNM = makeCarbonNormalMap(512);
+
+    /* ── Materials ──────────────────────────────────────────── */
+    const mats = {
+      'Carbon_Fiber_-_Plain': new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.28, metalness: 0.12, normalMap: carbonNM, normalScale: new THREE.Vector2(1,1) }),
+      'Rubber_-_Bumpy':       new THREE.MeshStandardMaterial({ color: 0x0c0c0c, roughness: 0.96, metalness: 0.0 }),
+      'Opaque(25,25,25)':     new THREE.MeshStandardMaterial({ color: 0x191919, roughness: 0.65, metalness: 0.35 }),
+      'Opaque(39,39,39)':     new THREE.MeshStandardMaterial({ color: 0x272727, roughness: 0.60, metalness: 0.30 }),
+      'Opaque(63,63,63)':     new THREE.MeshStandardMaterial({ color: 0x3f3f3f, roughness: 0.55, metalness: 0.40 }),
+      'Opaque(160,160,160)':  new THREE.MeshStandardMaterial({ color: 0xa0a0a0, roughness: 0.35, metalness: 0.75 }),
+      'Opaque(179,179,179)':  new THREE.MeshStandardMaterial({ color: 0xb3b3b3, roughness: 0.30, metalness: 0.75 }),
+      'Opaque(191,186,179)':  new THREE.MeshStandardMaterial({ color: 0xbfbab3, roughness: 0.30, metalness: 0.78 }),
+      'Opaque(219,216,211)':  new THREE.MeshStandardMaterial({ color: 0xdbd8d3, roughness: 0.28, metalness: 0.82 }),
+      'Opaque(246,246,243)':  new THREE.MeshStandardMaterial({ color: 0xf6f6f3, roughness: 0.25, metalness: 0.10 }),
+      'Opaque(255,5,7)':      new THREE.MeshStandardMaterial({ color: 0xe10600, roughness: 0.45, metalness: 0.08 }),
+      'Opaque(196,53,39)':    new THREE.MeshStandardMaterial({ color: 0xc43527, roughness: 0.50, metalness: 0.08 }),
+      'Opaque(232,173,35)':   new THREE.MeshStandardMaterial({ color: 0xe8ad23, roughness: 0.50, metalness: 0.00 }),
+      'Opaque(48,59,150)':    new THREE.MeshStandardMaterial({ color: 0x303b96, roughness: 0.50, metalness: 0.00 }),
+      'Opaque(68,119,102)':   new THREE.MeshStandardMaterial({ color: 0x447766, roughness: 0.50, metalness: 0.00 }),
+      'Opaque(68,150,72)':    new THREE.MeshStandardMaterial({ color: 0x449648, roughness: 0.50, metalness: 0.00 }),
+      'Opaque(0,255,0)':      new THREE.MeshStandardMaterial({ color: 0x00cc44, roughness: 0.40, metalness: 0.00, emissive: new THREE.Color(0x003310), emissiveIntensity: 0.4 }),
+    };
+    const fallbackMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6, metalness: 0.2 });
+
+    /* ── Merge by material for fewer draw calls ─────────────── */
+    function optimiseMesh(group) {
+      group.updateMatrixWorld(true);
+      const buckets = {};
+      group.traverse(child => {
+        if (!child.isMesh) return;
+        const name = child.material.name;
+        if (!buckets[name]) buckets[name] = { geos: [], mat: mats[name] || fallbackMat };
+        const geo = child.geometry.clone();
+        geo.applyMatrix4(child.matrixWorld);
+        buckets[name].geos.push(geo);
+      });
+      const result = new THREE.Group();
+      for (const bucket of Object.values(buckets)) {
+        if (!bucket.geos.length) continue;
+        const merged = mergeGeometries(bucket.geos, false);
+        if (merged) result.add(new THREE.Mesh(merged, bucket.mat));
+        bucket.geos.forEach(g => g.dispose());
+      }
+      return result;
+    }
+
+    /* ── OBJ loading ────────────────────────────────────────── */
+    let model = null;
+    let baseScale = 1;
+    let fakeProgress = 0, fakeTimer = null;
+
+    function setLoadingUI(pct) {
+      document.getElementById('loading-bar-fill').style.width = pct + '%';
+      document.getElementById('loading-text').textContent = 'LOADING / ' + Math.round(pct).toString().padStart(2, '0') + '%';
+    }
+    function hideLoader() {
+      clearInterval(fakeTimer);
+      setLoadingUI(100);
+      const el = document.getElementById('loading');
+      setTimeout(() => { el.style.opacity = '0'; el.style.pointerEvents = 'none'; }, 300);
+      setTimeout(() => { el.style.display = 'none'; }, 1100);
+    }
+
+    fakeTimer = setInterval(() => {
+      fakeProgress = Math.min(fakeProgress + Math.random() * 2.2 + 0.4, 88);
+      setLoadingUI(fakeProgress);
+    }, 100);
+
+    new OBJLoader().load(
+      './assets/steering-wheel.obj',
+      (object) => {
+        /* Centre geometry at origin (geometry in OBJ mm units) */
+        const box = new THREE.Box3().setFromObject(object);
+        const centre = box.getCenter(new THREE.Vector3());
+        const size   = box.getSize(new THREE.Vector3());
+        object.position.copy(centre.clone().negate());
+        object.updateMatrixWorld(true);
+
+        /* Merge into ~17 draw calls */
+        const merged = optimiseMesh(object);
+
+        /*
+         * Scale so model height fills 65% of viewport at camera z=3.5, FOV 35.
+         * visibleHeight at z=0: 2 * CAM_Z * tan(FOV/2 * deg2rad)
+         */
+        const halfVH  = CAM_Z * Math.tan((FOV / 2) * Math.PI / 180);
+        const targetH = 2 * halfVH * 0.65;
+        baseScale     = targetH / size.y;
+        merged.scale.setScalar(baseScale);
+
+        scene.add(merged);
+        model = merged;
+        hideLoader();
+      },
+      (xhr) => {
+        if (xhr.total > 0) {
+          const p = (xhr.loaded / xhr.total) * 100;
+          if (p > fakeProgress) { fakeProgress = p; setLoadingUI(p); }
+        }
+      },
+      (err) => {
+        console.error('OBJ load error:', err);
+        document.getElementById('loading-text').textContent = 'LOAD ERROR';
+      }
+    );
+
+    /* ── Model transform keyframes ──────────────────────────── */
+    /*
+     * px/py: world position (camera at z=3.5 looking at 0,0,0)
+     * sf: scale factor relative to baseScale
+     * rx/rz: extra X/Z rotation (Y driven by scroll separately)
+     */
+    const modelKFs = [
+      { t: 0.00, px: 0,     py: 0,    sf: 1.00, rx:  0.00, rz: 0.00 }, // S01 centre
+      { t: 0.21, px: 0,     py: 0,    sf: 1.00, rx:  0.00, rz: 0.00 },
+      { t: 0.23, px: 0.82,  py: 0,    sf: 0.62, rx: -0.20, rz: 0.05 }, // S02 right+tilt
+      { t: 0.46, px: 0.82,  py: 0,    sf: 0.62, rx: -0.20, rz: 0.05 },
+      { t: 0.49, px: 0.82,  py: 0,    sf: 0.62, rx:  0.00, rz: 0.00 }, // S03 right flat
+      { t: 0.72, px: 0.82,  py: 0,    sf: 0.62, rx:  0.00, rz: 0.00 },
+      { t: 0.74, px: 0,     py:-0.08, sf: 0.77, rx:  0.00, rz: 0.00 }, // S04 centre
+      { t: 1.00, px: 0,     py:-0.05, sf: 0.77, rx:  0.00, rz: 0.00 },
+    ];
+
+    function ss(t) { return t * t * (3 - 2 * t); } // smoothstep
+
+    function lerpKF(t, prop) {
+      let a = modelKFs[0], b = modelKFs[modelKFs.length - 1];
+      for (let i = 0; i < modelKFs.length - 1; i++) {
+        if (t >= modelKFs[i].t && t <= modelKFs[i+1].t) { a = modelKFs[i]; b = modelKFs[i+1]; break; }
+      }
+      const span = b.t - a.t;
+      const lt = span === 0 ? 0 : ss((t - a.t) / span);
+      return a[prop] + (b[prop] - a[prop]) * lt;
+    }
+
+    /* ── Scroll state ───────────────────────────────────────── */
+    let targetFrac = 0, scrollFrac = 0;
+    const camLookAt = new THREE.Vector3();
+    let idleTick = 0;
+
+    window.addEventListener('scroll', () => {
+      const max = document.body.scrollHeight - window.innerHeight;
+      targetFrac = max > 0 ? window.scrollY / max : 0;
+    }, { passive: true });
+
+    /* ── Section elements & stagger ────────────────────────── */
+    const sections = Array.from(document.querySelectorAll('.section'));
+    const entered  = new Set();
+
+    function updateSections(t) {
+      sections.forEach(sec => {
+        const start = parseFloat(sec.dataset.start);
+        const end   = parseFloat(sec.dataset.end);
+        const range = end - start;
+        if (range <= 0) return;
+        const lt = (t - start) / range;
+        let opacity = 0, ty = 28;
+        if (lt >= 0 && lt <= 1) {
+          if      (lt < 0.18) { const p = lt / 0.18;        opacity = p;     ty = 28 * (1 - p); }
+          else if (lt > 0.82) { const p = (lt - 0.82) / 0.18; opacity = 1-p; ty = -20 * p;      }
+          else                { opacity = 1; ty = 0; }
+        }
+        sec.style.opacity   = opacity;
+        sec.style.transform = `translateY(${ty}px)`;
+        const active = opacity > 0.05;
+        sec.classList.toggle('visible', active);
+        if (active && !entered.has(sec.id)) { entered.add(sec.id); sec.classList.add('entered'); }
+        if (!active && entered.has(sec.id)) { entered.delete(sec.id); sec.classList.remove('entered'); }
+      });
+    }
+
+    /* ── Nav & progress bar ─────────────────────────────────── */
+    const navSec     = document.getElementById('nav-section');
+    const nav        = document.getElementById('nav');
+    const progFill   = document.getElementById('progress-fill');
+    const progLabel  = document.getElementById('progress-label');
+
+    function updateUI(t) {
+      let n = '01';
+      if      (t >= 0.74) n = '04';
+      else if (t >= 0.49) n = '03';
+      else if (t >= 0.23) n = '02';
+      navSec.textContent    = n + ' / 04';
+      progLabel.textContent = n + '/04';
+      progFill.style.height = (t * 100) + '%';
+      nav.classList.toggle('scrolled', t > 0.04);
+    }
+
+    /* ── Resize ─────────────────────────────────────────────── */
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    /* ── RAF loop ───────────────────────────────────────────── */
+    let paused = false;
+    document.addEventListener('visibilitychange', () => { paused = document.hidden; if (!paused) loop(); });
+
+    function loop() {
+      if (paused) return;
+      requestAnimationFrame(loop);
+
+      scrollFrac += (targetFrac - scrollFrac) * 0.055;
+
+      if (model) {
+        const px = lerpKF(scrollFrac, 'px');
+        const py = lerpKF(scrollFrac, 'py');
+        const sf = lerpKF(scrollFrac, 'sf');
+        const rx = lerpKF(scrollFrac, 'rx');
+        const rz = lerpKF(scrollFrac, 'rz');
+
+        /* Position & scale */
+        model.position.set(px, py, 0);
+        model.scale.setScalar(baseScale * sf);
+
+        /* Y rotation: 720° total → lands at 0 (mod 2π) at scroll=1 */
+        const baseRot = scrollFrac * Math.PI * 4;
+        if (scrollFrac < 0.16) {
+          idleTick += 0.011;
+          model.rotation.y = baseRot + Math.sin(idleTick) * 0.07;
+        } else {
+          model.rotation.y = baseRot;
+        }
+        model.rotation.x = rx;
+        model.rotation.z = rz;
+
+        /* Camera looks slightly toward model to give a subtle pan feel */
+        camLookAt.lerp(new THREE.Vector3(px * 0.25, py * 0.25, 0), 0.045);
+      }
+
+      camera.position.set(0, 0, CAM_Z);
+      camera.lookAt(camLookAt);
+
+      updateSections(scrollFrac);
+      updateUI(scrollFrac);
+      renderer.render(scene, camera);
+    }
+
+    loop();
+  </script>
+</body>
+</html>
